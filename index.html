@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111214">
+<title>作品</title>
+<style>
+  :root{--bg:#111214;--panel:#1a1c1f;--line:#2a2d31;--fg:#e8e8ea;--dim:#8b8f96;--accent:#6b8afd;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif}
+  #app{display:flex;flex-direction:column;height:100dvh}
+  header{display:flex;align-items:center;gap:8px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  header .t{font-size:15px;font-weight:600;flex:1}
+  header button{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:6px 10px;font-size:13px}
+  #log{flex:1;overflow-y:auto;padding:14px 14px 6px;-webkit-overflow-scrolling:touch}
+  .m{max-width:92%;margin:0 0 14px;padding:10px 13px;border-radius:14px;white-space:pre-wrap;word-break:break-word}
+  .me{margin-left:auto;background:#25304a}
+  .ai{background:var(--panel);border:1px solid var(--line)}
+  .ai.think{color:var(--dim);font-size:14px}
+  footer{padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
+  .row{display:flex;gap:8px;align-items:flex-end}
+  textarea{flex:1;resize:none;min-height:46px;max-height:180px;padding:11px 13px;border-radius:12px;
+    border:1px solid var(--line);background:#0e0f11;color:var(--fg);font:inherit;line-height:1.5;outline:none}
+  textarea:focus{border-color:#3c4a72}
+  #send{width:52px;height:46px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600}
+  #send:disabled{opacity:.45}
+  .bar{display:flex;gap:14px;padding:6px 2px 0;font-size:12px;color:var(--dim)}
+  .bar a{color:var(--dim);text-decoration:none}
+  #sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:9}
+  #sheet.on{display:flex}
+  .card{width:100%;max-height:90dvh;overflow-y:auto;background:var(--panel);border-radius:16px 16px 0 0;
+    padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+  .card h3{margin:0 0 4px;font-size:15px}
+  .card p{margin:0 0 10px;font-size:12px;color:var(--dim)}
+  .card label{display:block;font-size:12px;color:var(--dim);margin:12px 0 6px}
+  .card input,.card textarea{width:100%;background:#0e0f11;border:1px solid var(--line);border-radius:10px;
+    color:var(--fg);padding:10px 12px;font:inherit;font-size:14px}
+  .card textarea{min-height:220px;line-height:1.55}
+  .card .act{display:flex;gap:10px;margin-top:14px}
+  .card .act button{flex:1;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0e0f11;color:var(--fg);font-size:15px}
+  .card .act .pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .hint{font-size:12px;color:var(--dim);margin-top:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="t">作品</div>
+    <button id="cfg">设定</button>
+    <button id="newc">新会话</button>
+  </header>
+  <div id="log"></div>
+  <footer>
+    <div class="row">
+      <textarea id="in" rows="1" placeholder="直接发剧情，不用前置说明"></textarea>
+      <button id="send">发送</button>
+    </div>
+    <div class="bar"><a href="#" id="stop">停止</a><span id="stat">就绪</span><span id="cnt"></span></div>
+  </footer>
+</div>
+
+<div id="sheet">
+  <div class="card">
+    <h3>设定</h3>
+    <p>都存在这台设备本地（localStorage），不上传任何服务器。这是纯静态页，浏览器直连 DeepSeek API。</p>
+    <label>API Key（sk- 开头）</label>
+    <input id="key" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+    <label>长期约定（system）</label>
+    <textarea id="sysbox"></textarea>
+    <label>模型</label>
+    <input id="model" type="text" placeholder="deepseek-flash">
+    <div class="act"><button id="cancel">取消</button><button id="save" class="pri">保存</button></div>
+    <div class="hint">Key 只存在本机。清除 Safari 数据会一起清掉，记得备份。</div>
+  </div>
+</div>
+
+<script>
+const LS={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},
+          set(k,v){localStorage.setItem(k,JSON.stringify(v))}};
+const $=s=>document.querySelector(s);
+const log=$('#log'),input=$('#in'),sendBtn=$('#send'),stat=$('#stat'),cnt=$('#cnt');
+
+const DEFAULT_SYS = '你是一个合作作者。按用户给定的设定与文风写作，保持人物一致性，长段落推进，不要每段收尾，不加多余提醒。';
+
+let cfg = LS.get('cfg', {key:'', sys:DEFAULT_SYS, model:'deepseek-flash', base:'https://api.deepseek.com/v1'});
+
+/* 启动链接里带 #<约定base64> 时导入一次；导入后从地址栏抹掉 */
+(function importPreset(){
+  const h = location.hash.slice(1);
+  if (!h) return;
+  try {
+    const bin = Uint8Array.from(atob(h), c => c.charCodeAt(0));
+    const text = new TextDecoder().decode(bin);
+    if (text.trim().length > 20) {
+      cfg.sys = text.trim();
+      LS.set('cfg', cfg);
+    }
+  } catch (e) {}
+  history.replaceState({}, '', location.pathname + location.search);
+})();
+let msgs = LS.get('msgs', []);
+let ctrl = null;
+
+const count=()=>{cnt.textContent = msgs.length?`本轮 ${msgs.length} 条`:''};
+function bubble(role,text){const d=document.createElement('div');d.className='m '+(role==='user'?'me':'ai');d.textContent=text;log.appendChild(d);return d}
+function paint(){log.innerHTML='';
+  if(!msgs.length){const d=document.createElement('div');d.className='m ai think';
+    d.textContent=cfg.key?'直接给设定或场景，第一句不用提题材。':'先点右上角「设定」填 API key。';
+    log.appendChild(d)}
+  msgs.forEach(m=>bubble(m.role,m.content));log.scrollTop=log.scrollHeight}
+function autosize(){input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px'}
+input.addEventListener('input',autosize);
+
+async function send(){
+  const text=input.value.trim();
+  if(!text||ctrl) return;
+  if(!cfg.key){stat.textContent='先填 key';$('#sheet').classList.add('on');$('#key').value='';return}
+  input.value='';autosize();
+  msgs.push({role:'user',content:text});bubble('user',text);count();LS.set('msgs',msgs);
+
+  const node=bubble('assistant','');
+  const think=document.createElement('div');think.className='m ai think';think.style.display='none';
+  log.insertBefore(think,node);
+  let acc='',rea='';
+  stat.textContent='生成中…';sendBtn.disabled=true;ctrl=new AbortController();
+  try{
+    const res=await fetch(cfg.base.replace(/\/$/,'')+'/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},
+      body:JSON.stringify({model:cfg.model,stream:true,temperature:1.3,max_tokens:4000,
+        messages:[{role:'system',content:cfg.sys},...msgs.slice(-40)],
+        thinking:{type:'disabled'}}),
+      signal:ctrl.signal
+    });
+    if(!res.ok){
+      const t=await res.text();
+      node.textContent='[HTTP '+res.status+'] '+t.slice(0,300);
+      stat.textContent='出错了';ctrl=null;sendBtn.disabled=false;return;
+    }
+    const rd=res.body.getReader(),dec=new TextDecoder();let buf='';
+    while(true){
+      const {value,done}=await rd.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf('\n\n'))>=0){
+        const chunk=buf.slice(0,i);buf=buf.slice(i+2);
+        for(const line of chunk.split('\n')){
+          if(!line.startsWith('data:'))continue;
+          const data=line.slice(5).trim();
+          if(data==='[DONE]')continue;
+          try{const j=JSON.parse(data);const dl=j.choices?.[0]?.delta||{};
+            const r=dl.reasoning_content||'';const t=dl.content||'';
+            if(r){rea+=r;think.style.display='';think.textContent=rea;log.scrollTop=log.scrollHeight}
+            if(t){acc+=t;node.textContent=acc;log.scrollTop=log.scrollHeight}
+          }catch(e){}
+        }
+      }
+    }
+  }catch(e){
+    acc+= (acc?'\n\n':'')+'[中断] '+e.message;node.textContent=acc;
+  }finally{
+    ctrl=null;sendBtn.disabled=false;stat.textContent='就绪';
+    if(!acc.trim()){node.remove();if(!rea.trim())think.remove()}
+    else{msgs.push({role:'assistant',content:acc});LS.set('msgs',msgs);count()}
+  }
+}
+
+sendBtn.onclick=send;
+input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}});
+$('#stop').onclick=e=>{e.preventDefault();if(ctrl)ctrl.abort()};
+$('#newc').onclick=()=>{if(msgs.length&&!confirm('清空本会话历史？设定不受影响。'))return;
+  msgs=[];LS.set('msgs',msgs);paint();count()};
+$('#cfg').onclick=()=>{$('#key').value=cfg.key||'';$('#sysbox').value=cfg.sys;$('#model').value=cfg.model;
+  $('#sheet').classList.add('on')};
+$('#cancel').onclick=()=>$('#sheet').classList.remove('on');
+$('#save').onclick=()=>{
+  cfg.key=$('#key').value.trim();
+  cfg.sys=$('#sysbox').value.trim()||DEFAULT_SYS;
+  cfg.model=$('#model').value.trim()||'deepseek-flash';
+  cfg.base='https://api.deepseek.com/v1';
+  LS.set('cfg',cfg);$('#sheet').classList.remove('on');stat.textContent='已保存';paint();
+};
+paint();count();
+</script>
+</body>
+</html>
