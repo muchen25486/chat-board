@@ -94,7 +94,9 @@ let cfg = LS.get('cfg', {key:'', sys:DEFAULT_SYS, model:'deepseek-flash', base:'
   const h = location.hash.slice(1);
   if (!h) return;
   try {
-    const bin = Uint8Array.from(atob(h), c => c.charCodeAt(0));
+    let b = h.replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    const bin = Uint8Array.from(atob(b), c => c.charCodeAt(0));
     const text = new TextDecoder().decode(bin);
     if (text.trim().length > 20) {
       cfg.sys = text.trim();
