@@ -31,8 +31,14 @@
   #send:disabled{opacity:.45}
   .bar{display:flex;gap:14px;padding:6px 2px 0;font-size:12px;color:var(--dim)}
   .bar a{color:var(--dim);text-decoration:none}
-  #sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:9}
-  #sheet.on{display:flex}
+  #sheet,#sheet2{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:9}
+  #sheet.on,#sheet2.on{display:flex}
+  #castList{max-height:52dvh;overflow-y:auto}
+  .castItem{display:flex;gap:8px;align-items:center;padding:11px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:8px;background:#0e0f11}
+  .castItem .nm{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .castItem .mini{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:none}
+  .empty{font-size:13px;color:var(--dim);padding:10px 2px}
   .card{width:100%;max-height:90dvh;overflow-y:auto;background:var(--panel);border-radius:16px 16px 0 0;
     padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
   .card h3{margin:0 0 4px;font-size:15px}
@@ -51,6 +57,7 @@
 <div id="app">
   <header>
     <div class="t">作品</div>
+    <button id="cast">人设</button>
     <button id="cfg">设定</button>
     <button id="newc">新会话</button>
   </header>
@@ -62,6 +69,16 @@
     </div>
     <div class="bar"><a href="#" id="stop">停止</a><span id="stat">就绪</span><span id="cnt"></span></div>
   </footer>
+</div>
+
+<div id="sheet2">
+  <div class="card">
+    <h3>人设库</h3>
+    <p>点一条载入到输入框，可再改；载入不等于发送。</p>
+    <div id="castList"></div>
+    <div class="act"><button id="castSave">保存当前输入框为新的人设</button></div>
+    <div class="act"><button id="castClose">关闭</button></div>
+  </div>
 </div>
 
 <div id="sheet">
@@ -175,6 +192,39 @@ async function send(){
 sendBtn.onclick=send;
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}});
 $('#stop').onclick=e=>{e.preventDefault();if(ctrl)ctrl.abort()};
+let cast = LS.get('cast', []);
+function renderCast(){
+  const box = $('#castList');
+  if(!cast.length){ box.innerHTML = '<div class="empty">还没有人设。在输入框里写好一段设定，点下面保存。</div>'; return; }
+  box.innerHTML = '';
+  cast.forEach((c,i)=>{
+    const row = document.createElement('div'); row.className = 'castItem';
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = c.name;
+    const use = document.createElement('button'); use.className = 'mini'; use.textContent = '载入';
+    const del = document.createElement('button'); del.className = 'mini'; del.textContent = '删';
+    use.onclick = () => {
+      if (input.value.trim() && !confirm('输入框里有内容，替换掉？')) return;
+      input.value = c.text; autosize();
+      $('#sheet2').classList.remove('on'); input.focus();
+    };
+    del.onclick = () => {
+      if (!confirm('删除「' + c.name + '」？')) return;
+      cast.splice(i,1); LS.set('cast',cast); renderCast();
+    };
+    row.append(nm,use,del); box.appendChild(row);
+  });
+}
+$('#cast').onclick = () => { renderCast(); $('#sheet2').classList.add('on'); };
+$('#castClose').onclick = () => $('#sheet2').classList.remove('on');
+$('#castSave').onclick = () => {
+  const text = input.value.trim();
+  if (!text) { stat.textContent = '输入框是空的'; return; }
+  const name = prompt('给这个人设起个名字：', '人设 ' + (cast.length + 1));
+  if (!name) return;
+  cast.unshift({name: name.trim() || ('人设 ' + (cast.length+1)), text});
+  LS.set('cast', cast); renderCast(); stat.textContent = '已存 ' + name;
+};
+
 $('#newc').onclick=()=>{if(msgs.length&&!confirm('清空本会话历史？设定不受影响。'))return;
   msgs=[];LS.set('msgs',msgs);paint();count()};
 $('#cfg').onclick=()=>{$('#key').value=cfg.key||'';$('#sysbox').value=cfg.sys;$('#model').value=cfg.model;
